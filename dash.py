@@ -32,7 +32,7 @@ st.markdown("""
 #Партнеры АЗС, номера, регионы
 spisok_azs = pd.read_excel('список АЗС.xlsx')
 spisok_azs['Регион'] = spisok_azs['Адрес АЗС'].str.split(',').str[0]
-# partners = pd.read_csv(r'Список АЗС.csv')
+
 # print(partners
 #       )
 
