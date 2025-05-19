@@ -5,7 +5,6 @@ import streamlit as st
 from datetime import date, datetime
 
 
-
 # ====================== НАСТРОЙКА СТРАНИЦ ======================
 if 'page' not in st.session_state:
     st.session_state.page = 'page1'  # По умолчанию первая страница
@@ -31,24 +30,35 @@ st.markdown("""
 # Чтение всех необходимых файлов из первой программы
 
 #Партнеры АЗС, номера, регионы
-file = open(r'Список АЗС.csv')
-csv_reader = csv.reader(file)
+spisok_azs = pd.read_excel('список АЗС.xlsx')
+spisok_azs['Регион'] = spisok_azs['Адрес АЗС'].str.split(',').str[0]
 # partners = pd.read_csv(r'Список АЗС.csv')
 # print(partners
 #       )
 
-partner_azs = list(csv_reader)[1:]
-name_partner = pd.DataFrame(partner_azs)[1].drop_duplicates()
-number_azs =  pd.to_numeric(pd.DataFrame(partner_azs)[0])
-region =  pd.DataFrame(partner_azs)[2].drop_duplicates()
+
+partner_azs = spisok_azs['Партнер']
+name_partner = partner_azs.drop_duplicates()
+number_azs =  pd.to_numeric(spisok_azs['АЗС '])
+region = spisok_azs['Регион'].drop_duplicates()
+# adres = list(spisok_azs['Адрес АЗС'])
+# reg = []
+# for i in adres:
+#     b = i.split(',')[0]
+#     reg.append(b)
+# reg = pd.DataFrame(reg)
+# region =  reg.drop_duplicates()
+
 
 #Выгрузка отзывов
 data = pd.read_excel('ДатаФрейм.xlsx')
-start_date = list(data['Дата'])[-1].split('-')
+max_date = max(list(data['Дата']))
+min_date = min(list(data['Дата']))
+start_date = min_date.split('-')
 start_day = int(start_date[2])
 start_month = int(start_date[1])
 start_year = int(start_date[0])
-end_date = list(data['Дата'])[0].split('-')
+end_date = max_date.split('-')
 end_day = int(end_date[2])
 end_month = int(end_date[1])
 end_year = int(end_date[0])
@@ -70,6 +80,7 @@ cols = st.columns(3)
 with cols[0]:
     if st.button('📊 Категории, теги и тональности', key='btn_page1'):
         st.session_state.page = 'page1'
+
 with cols[1]:
     if st.button('🍩 Топы партнеров', key='btn_page2'):
         st.session_state.page = 'page2'
@@ -117,10 +128,36 @@ if st.session_state.page == 'page1':
 
 
     region = st.sidebar.multiselect('Регион', (region), region)
-    partner = st.sidebar.multiselect('Партнер', (name_partner), name_partner)
-    azs = st.sidebar.multiselect('Номер АЗС', (number_azs), number_azs)
-
+    #partner = st.sidebar.multiselect('Партнер', (name_partner), name_partner)
+    if region:
+        available_partners = spisok_azs[spisok_azs['Регион'].isin(region)]['Партнер'].unique().tolist()
+    else:
+        available_partners = spisok_azs['Партнер'].unique().tolist()
     # # Применяем фильтры к данным
+    partner = st.sidebar.multiselect(
+        'Партнер',
+        options=available_partners,
+        default=available_partners
+    )
+    if region or partner:
+        filter_condition = True
+        if region:
+            filter_condition &= (spisok_azs['Регион'].isin(region))
+        if partner:
+            filter_condition &= (spisok_azs['Партнер'].isin(partner))
+
+        available_azs = spisok_azs[filter_condition]['АЗС '].unique().tolist()
+    else:
+        available_azs = spisok_azs['АЗС '].unique().tolist()
+
+    azs = st.sidebar.multiselect(
+        'Номер АЗС',
+        options=available_azs,
+        default=available_azs
+    )
+
+
+
 
     filtered_data = data[
         (data['Дата'] >= start) &
@@ -129,9 +166,6 @@ if st.session_state.page == 'page1':
         (data['АЗС'].isin(azs)) &
         (data['Партнер'].isin(partner))
     ]
-
-
-
 
     # Рассчитываем средний рейтинг по отфильтрованным данным
     avg_rating = filtered_data['Рейтинг'].mean() if not filtered_data.empty else 0
@@ -188,11 +222,31 @@ if st.session_state.page == 'page1':
                         .mean()
                         .reset_index())
 
-    st.line_chart(
-            cumulative_daily.set_index('Дата'),
-            y='Рейтинг',
-            height=400
-        )
+    # st.line_chart(
+    #         cumulative_daily.set_index('Дата'),
+    #         y='Рейтинг',
+    #         height=400
+    #     )
+
+    fig = px.line(
+        cumulative_daily,
+        x='Дата',
+        y='Рейтинг',
+        title='График рейтинга по дням',
+        labels={'Рейтинг': 'Рейтинг', 'Дата': 'Дата'},
+        height=400,
+    )
+
+    # Настройка внешнего вида (опционально)
+    fig.update_layout(
+        hovermode='x unified',  # показывает данные при наведении
+        plot_bgcolor='white',  # белый фон
+        xaxis=dict(showgrid=True, gridcolor='lightgray'),  # сетка по X
+        yaxis=dict(showgrid=True, gridcolor='lightgray'),  # сетка по Y
+    )
+
+    # Вывод графика в Streamlit
+    st.plotly_chart(fig, use_container_width=True)
 
 
 
@@ -254,12 +308,24 @@ if st.session_state.page == 'page1':
 
         )
 
+        # Добавляем callback для обработки кликов
+        fig_tag.update_layout(
+            clickmode='event+select'
+        )
 
 
         # Отображаем диаграмму
         #st.plotly_chart(fig_tag, use_container_width=True)
         with tags_colc:
-            st.plotly_chart(fig_tag, use_container_width=True)  # use_container_width растягивает на всю ширину колонки
+            selected = st.plotly_chart(fig_tag, use_container_width=True)  # use_container_width растягивает на всю ширину колонки
+            # # Обработка клика
+            # if selected.select_data:
+            #     clicked_tag = selected.select_data[0]['points'][0]['label']
+            #     comments = tag_counts[tag_counts['Тег'] == clicked_tag]['Комментарии'].iloc[0]
+            #
+            #     st.subheader(f"Комментарии с тегом '{clicked_tag}':")
+            #     for comment in comments:
+            #         st.write(f"- {comment}")
 
         # Дополнительная таблица с данными
         st.write("### Статистика по тегам")
@@ -281,14 +347,14 @@ if st.session_state.page == 'page1':
 
 
     # Объединяем таблицы с тональностью
-    data_with_tags_ton = pd.merge(data_with_tags, tonal, on='id Отзыва')
+    data_with_ton = pd.merge(data, tonal, on='id Отзыва')
 
-    filtered_data_tag_ton = data_with_tags_ton[
-        (data_with_tags_ton['Дата'] >= start) &
-        (data_with_tags_ton['Дата'] <= end) &
-        (data_with_tags_ton['Регион'].isin(region)) &
-        (data_with_tags_ton['АЗС'].isin(azs)) &
-        (data_with_tags_ton['Партнер'].isin(partner))
+    filtered_data_tag_ton = data_with_ton[
+        (data_with_ton['Дата'] >= start) &
+        (data_with_ton['Дата'] <= end) &
+        (data_with_ton['Регион'].isin(region)) &
+        (data_with_ton['АЗС'].isin(azs)) &
+        (data_with_ton['Партнер'].isin(partner))
     ]
 
     # Группируем по тональности
@@ -373,6 +439,7 @@ if st.session_state.page == 'page1':
             category_data = filtered_data_tag[filtered_data_tag['Категория'] == category]
             if not category_data.empty:
                 grouped = category_data.groupby('Тег').size().reset_index(name='Количество')
+                grouped = grouped.sort_values('Количество', ascending=False)
                 fig = px.bar(
                     grouped,
                     x='Тег',
@@ -380,7 +447,8 @@ if st.session_state.page == 'page1':
                     title=f'{category}',
                     color='Тег',
                     color_discrete_sequence=px.colors.qualitative.Pastel,
-                    height=400
+                    height=400,
+                    category_orders={"Тег": grouped['Тег'].tolist()}
                 )
                 fig.update_layout(showlegend=False,
                                   xaxis=dict(
@@ -577,6 +645,10 @@ if st.session_state.page == 'page1':
         (data['АЗС'].isin(azs)) &
         (data['Партнер'].isin(partner))
         ]
+    filtered_data['Каталог'] = filtered_data['Каталог'].replace(
+        ['2ГИС', '2gis', '2 гис'],
+        '2GIS'
+    )
     # Группируем данные по каталогам
     catalog_stats = filtered_data['Каталог'].value_counts().reset_index()
     catalog_stats.columns = ['Каталог', 'Количество отзывов']
@@ -619,12 +691,18 @@ if st.session_state.page == 'page1':
 
 
     st.write('### 2GIS')
-    df_2gis = filtered_data_tag[filtered_data_tag['Каталог'] == '2GIS']
+
+    filtered_data_tag['Каталог'] = filtered_data_tag['Каталог'].replace(
+        ['2ГИС', '2gis', '2 гис'],
+        '2GIS'
+    )
+
+    df_2gis = filtered_data_tag[filtered_data_tag['Каталог'].isin(['2GIS', '2ГИС'])]
     df_2gis_all = filtered_data[filtered_data['Каталог'] == '2GIS']
     # Создаем два столбца
 
     if df_2gis.empty or df_2gis_all.empty:
-        st.warning("Нет данных для отображения по Google Business Profile")
+        st.warning("Нет данных для отображения по 2GIS")
     else:
 
         col1, col2 = st.columns(2)
@@ -777,6 +855,7 @@ if st.session_state.page == 'page1':
                 label="Количество комментариев",
                 value=f"{num_comments}"
             )
+
 
 
 # ====================== СТРАНИЦА 2 ======================
@@ -1116,29 +1195,29 @@ if st.session_state.page == 'page3':
         )
 
     # Вторая колонка - список комментариев
-    with col2:
-        st.subheader("Комментарии по выбранным фильтрам")
-
-        # Создаем расширяемый контейнер для комментариев
-        with st.expander("Показать комментарии", expanded=True):
-            # Отображаем только нужные колонки
-            comments_df = filtered_data[['Дата', 'АЗС', 'Отзыв']]
-
-            # # Форматируем дату для лучшего отображения
-            # comments_df['дата'] = comments_df['дата'].dt.strftime('%d.%m.%Y')
-
-            # Выводим в виде таблицы с возможностью прокрутки
-            st.dataframe(
-                comments_df,
-                column_config={
-                    "Дата": "Дата",
-                    "АЗС": st.column_config.TextColumn("АЗС", width="small"),
-                    "Отзыв": st.column_config.TextColumn("Отзыв", width="large")
-                },
-                hide_index=True,
-                use_container_width=True,
-                height=400  # Фиксированная высота с прокруткой
-            )
+    # with col2:
+    #     st.subheader("Комментарии по выбранным фильтрам")
+    #
+    #     # Создаем расширяемый контейнер для комментариев
+    #     with st.expander("Показать комментарии", expanded=True):
+    #         # Отображаем только нужные колонки
+    #         comments_df = filtered_data[['Дата', 'АЗС', 'Отзыв']]
+    #
+    #         # # Форматируем дату для лучшего отображения
+    #         # comments_df['дата'] = comments_df['дата'].dt.strftime('%d.%m.%Y')
+    #
+    #         # Выводим в виде таблицы с возможностью прокрутки
+    #         st.dataframe(
+    #             comments_df,
+    #             column_config={
+    #                 "Дата": "Дата",
+    #                 "АЗС": st.column_config.TextColumn("АЗС", width="small"),
+    #                 "Отзыв": st.column_config.TextColumn("Отзыв", width="large")
+    #             },
+    #             hide_index=True,
+    #             use_container_width=True,
+    #             height=400  # Фиксированная высота с прокруткой
+    #         )
 
 
 
